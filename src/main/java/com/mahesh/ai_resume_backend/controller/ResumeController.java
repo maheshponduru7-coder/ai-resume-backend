@@ -21,7 +21,7 @@ import com.mahesh.ai_resume_backend.service.JobMatchingService;
 import com.mahesh.ai_resume_backend.service.SkillService;
 
 @RestController
-@CrossOrigin(origins = "http://localhost:5173")
+@CrossOrigin(origins = "*")
 public class ResumeController {
 
     private final SkillService skillService;
