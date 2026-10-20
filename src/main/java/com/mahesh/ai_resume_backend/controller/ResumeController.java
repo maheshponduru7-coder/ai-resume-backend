@@ -1,22 +1,26 @@
-
 package com.mahesh.ai_resume_backend.controller;
 
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
-import com.mahesh.ai_resume_backend.repository.ResumeRepository;
 import com.mahesh.ai_resume_backend.model.JobDescriptionRequest;
 import com.mahesh.ai_resume_backend.model.Resume;
 import com.mahesh.ai_resume_backend.model.ResumeAnalysisResponse;
+import com.mahesh.ai_resume_backend.model.User;
+import com.mahesh.ai_resume_backend.repository.ResumeRepository;
+import com.mahesh.ai_resume_backend.repository.UserRepository;
+import com.mahesh.ai_resume_backend.security.UserPrincipal;
 import com.mahesh.ai_resume_backend.service.JobMatchingService;
 import com.mahesh.ai_resume_backend.service.SkillService;
 
@@ -27,14 +31,17 @@ public class ResumeController {
     private final SkillService skillService;
     private final JobMatchingService jobMatchingService;
     private final ResumeRepository resumeRepository;
+    private final UserRepository userRepository;
 
     public ResumeController(
             SkillService skillService,
             JobMatchingService jobMatchingService,
-            ResumeRepository resumeRepository) {
+            ResumeRepository resumeRepository,
+            UserRepository userRepository) {
         this.skillService = skillService;
         this.jobMatchingService = jobMatchingService;
         this.resumeRepository = resumeRepository;
+        this.userRepository = userRepository;
     }
 
     @PostMapping("/api/resume/analyze")
@@ -59,71 +66,89 @@ public class ResumeController {
     }
 
     @PostMapping("/api/resume/save")
-    public Resume saveResume(@RequestBody Resume resume) {
+    public ResponseEntity<?> saveResume(
+            @RequestBody Resume resume,
+            @AuthenticationPrincipal UserPrincipal principal) {
+
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "You must be logged in to save resumes to your history."));
+        }
+
+        User user = userRepository.findById(principal.getId()).orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Authenticated user not found."));
+        }
 
         String name = resume.getResumeName();
-
         if (name == null || name.trim().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Resume name cannot be empty");
+            return ResponseEntity.badRequest().body(Map.of("message", "Resume name cannot be empty"));
         }
 
         name = name.trim();
 
-        List<Resume> matches =
-                resumeRepository.findByResumeNameIgnoreCaseOrderByIdAsc(name);
+        // Scope lookup strictly to the authenticated user's resumes
+        List<Resume> userMatches =
+                resumeRepository.findByUserIdAndResumeNameIgnoreCaseOrderByIdAsc(user.getId(), name);
 
-        if (matches.isEmpty()) {
+        if (userMatches.isEmpty()) {
             resume.setResumeName(name);
-            return resumeRepository.save(resume);
+            resume.setUser(user);
+            Resume saved = resumeRepository.save(resume);
+            return ResponseEntity.ok(saved);
         }
 
-        // Keep the oldest record for this filename.
-        Resume existing = matches.get(0);
+        // Update the existing record for this user
+        Resume existing = userMatches.get(0);
         existing.setResumeName(name);
         existing.setSkills(resume.getSkills());
 
-        // Remove any older duplicate entries beyond the first.
-        if (matches.size() > 1) {
-            resumeRepository.deleteAll(
-                    matches.subList(1, matches.size()));
+        // Remove any redundant duplicates for this user only
+        if (userMatches.size() > 1) {
+            resumeRepository.deleteAll(userMatches.subList(1, userMatches.size()));
         }
 
-        return resumeRepository.save(existing);
+        Resume updated = resumeRepository.save(existing);
+        return ResponseEntity.ok(updated);
     }
 
     @GetMapping("/api/resume/history")
-    public List<Resume> getResumeHistory() {
+    public ResponseEntity<?> getResumeHistory(@AuthenticationPrincipal UserPrincipal principal) {
 
-        List<Resume> allResumes =
-                resumeRepository.findAllByOrderByIdAsc();
-
-        Map<String, Resume> uniqueResumes = new HashMap<>();
-        List<Resume> duplicates = new ArrayList<>();
-
-        for (Resume resume : allResumes) {
-            String name = resume.getResumeName();
-
-            if (name == null || name.trim().isEmpty()) {
-                // Keep records that have no usable filename.
-                uniqueResumes.put(
-                        "__missing_name_" + resume.getId(), resume);
-                continue;
-            }
-
-            String key = name.trim().toLowerCase(Locale.ROOT);
-
-            if (uniqueResumes.containsKey(key)) {
-                duplicates.add(resume);
-            } else {
-                uniqueResumes.put(key, resume);
-            }
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "You must be logged in to view your resume history."));
         }
 
-        if (!duplicates.isEmpty()) {
-            resumeRepository.deleteAll(duplicates);
+        // Return ONLY the authenticated user's resumes, newest first
+        List<Resume> userResumes = resumeRepository.findByUserIdOrderByIdDesc(principal.getId());
+        return ResponseEntity.ok(userResumes);
+    }
+
+    @DeleteMapping("/api/resume/{id}")
+    public ResponseEntity<?> deleteResume(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "You must be logged in to delete a resume."));
         }
 
-        return new ArrayList<>(uniqueResumes.values());
+        Resume resume = resumeRepository.findById(id).orElse(null);
+        if (resume == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Resume not found"));
+        }
+
+        // Ensure user can only delete their own resume
+        if (resume.getUser() == null || !resume.getUser().getId().equals(principal.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("message", "Access denied: You cannot delete another user's resume."));
+        }
+
+        resumeRepository.delete(resume);
+        return ResponseEntity.ok(Map.of("message", "Resume deleted successfully", "id", id));
     }
 }
