@@ -117,8 +117,7 @@ public class ResumeController {
     public ResponseEntity<?> getResumeHistory(@AuthenticationPrincipal UserPrincipal principal) {
 
         if (principal == null) {
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body(Map.of("message", "You must be logged in to view your resume history."));
+            return ResponseEntity.ok(java.util.Collections.emptyList());
         }
 
         // Return ONLY the authenticated user's resumes, newest first

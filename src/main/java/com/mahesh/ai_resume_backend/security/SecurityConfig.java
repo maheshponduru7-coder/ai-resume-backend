@@ -76,6 +76,7 @@ public class SecurityConfig {
                                 "/api/resume/match",
                                 "/error"
                         ).permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/resume/history").permitAll()
                         .anyRequest().authenticated()
                 );
 
