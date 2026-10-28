@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.mahesh.ai_resume_backend.model.AtsResult;
 import com.mahesh.ai_resume_backend.model.JobDescriptionRequest;
 import com.mahesh.ai_resume_backend.model.Resume;
 import com.mahesh.ai_resume_backend.model.ResumeAnalysisResponse;
@@ -21,6 +22,7 @@ import com.mahesh.ai_resume_backend.model.User;
 import com.mahesh.ai_resume_backend.repository.ResumeRepository;
 import com.mahesh.ai_resume_backend.repository.UserRepository;
 import com.mahesh.ai_resume_backend.security.UserPrincipal;
+import com.mahesh.ai_resume_backend.service.AtsService;
 import com.mahesh.ai_resume_backend.service.JobMatchingService;
 import com.mahesh.ai_resume_backend.service.SkillService;
 
@@ -30,16 +32,19 @@ public class ResumeController {
 
     private final SkillService skillService;
     private final JobMatchingService jobMatchingService;
+    private final AtsService atsService;
     private final ResumeRepository resumeRepository;
     private final UserRepository userRepository;
 
     public ResumeController(
             SkillService skillService,
             JobMatchingService jobMatchingService,
+            AtsService atsService,
             ResumeRepository resumeRepository,
             UserRepository userRepository) {
         this.skillService = skillService;
         this.jobMatchingService = jobMatchingService;
+        this.atsService = atsService;
         this.resumeRepository = resumeRepository;
         this.userRepository = userRepository;
     }
@@ -63,6 +68,19 @@ public class ResumeController {
         return jobMatchingService.analyze(
                 request.getResumeText(),
                 request.getJobDescription());
+    }
+
+    @PostMapping("/api/resume/ats-check")
+    public ResponseEntity<?> checkAtsScore(
+            @RequestBody JobDescriptionRequest request) {
+
+        if (request == null || request.getResumeText() == null || request.getResumeText().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Resume text cannot be empty. Please upload or provide a resume with readable text."));
+        }
+
+        AtsResult result = atsService.analyzeAts(request.getResumeText(), request.getJobDescription());
+        return ResponseEntity.ok(result);
     }
 
     @PostMapping("/api/resume/save")
