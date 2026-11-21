@@ -18,6 +18,8 @@ import com.mahesh.ai_resume_backend.model.AtsResult;
 import com.mahesh.ai_resume_backend.model.JobDescriptionRequest;
 import com.mahesh.ai_resume_backend.model.Resume;
 import com.mahesh.ai_resume_backend.model.ResumeAnalysisResponse;
+import com.mahesh.ai_resume_backend.model.ResumeCompareRequest;
+import com.mahesh.ai_resume_backend.model.ResumeCompareResponse;
 import com.mahesh.ai_resume_backend.model.ResumeImprovementResponse;
 import com.mahesh.ai_resume_backend.model.User;
 import com.mahesh.ai_resume_backend.repository.ResumeRepository;
@@ -25,6 +27,7 @@ import com.mahesh.ai_resume_backend.repository.UserRepository;
 import com.mahesh.ai_resume_backend.security.UserPrincipal;
 import com.mahesh.ai_resume_backend.service.AtsService;
 import com.mahesh.ai_resume_backend.service.JobMatchingService;
+import com.mahesh.ai_resume_backend.service.ResumeCompareService;
 import com.mahesh.ai_resume_backend.service.ResumeImprovementService;
 import com.mahesh.ai_resume_backend.service.SkillService;
 
@@ -36,6 +39,7 @@ public class ResumeController {
     private final JobMatchingService jobMatchingService;
     private final AtsService atsService;
     private final ResumeImprovementService resumeImprovementService;
+    private final ResumeCompareService resumeCompareService;
     private final ResumeRepository resumeRepository;
     private final UserRepository userRepository;
 
@@ -44,12 +48,14 @@ public class ResumeController {
             JobMatchingService jobMatchingService,
             AtsService atsService,
             ResumeImprovementService resumeImprovementService,
+            ResumeCompareService resumeCompareService,
             ResumeRepository resumeRepository,
             UserRepository userRepository) {
         this.skillService = skillService;
         this.jobMatchingService = jobMatchingService;
         this.atsService = atsService;
         this.resumeImprovementService = resumeImprovementService;
+        this.resumeCompareService = resumeCompareService;
         this.resumeRepository = resumeRepository;
         this.userRepository = userRepository;
     }
@@ -102,6 +108,27 @@ public class ResumeController {
         return ResponseEntity.ok(response);
     }
 
+    @PostMapping("/api/resume/compare")
+    public ResponseEntity<?> compareResumes(
+            @RequestBody ResumeCompareRequest request) {
+
+        if (request == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Comparison request body cannot be null."));
+        }
+        if (request.getOldResumeText() == null || request.getOldResumeText().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Original resume text cannot be empty. Please upload or provide the previous resume."));
+        }
+        if (request.getNewResumeText() == null || request.getNewResumeText().trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Updated resume text cannot be empty. Please upload or provide the updated resume."));
+        }
+
+        ResumeCompareResponse response = resumeCompareService.compareResumes(request);
+        return ResponseEntity.ok(response);
+    }
+
     @PostMapping("/api/resume/save")
     public ResponseEntity<?> saveResume(
             @RequestBody Resume resume,
@@ -139,7 +166,15 @@ public class ResumeController {
         // Update the existing record for this user
         Resume existing = userMatches.get(0);
         existing.setResumeName(name);
-        existing.setSkills(resume.getSkills());
+        if (resume.getSkills() != null) {
+            existing.setSkills(resume.getSkills());
+        }
+        if (resume.getAtsScore() != null) {
+            existing.setAtsScore(resume.getAtsScore());
+        }
+        if (resume.getMatchPercentage() != null) {
+            existing.setMatchPercentage(resume.getMatchPercentage());
+        }
 
         // Remove any redundant duplicates for this user only
         if (userMatches.size() > 1) {
@@ -160,6 +195,89 @@ public class ResumeController {
         // Return ONLY the authenticated user's resumes, newest first
         List<Resume> userResumes = resumeRepository.findByUserIdOrderByIdDesc(principal.getId());
         return ResponseEntity.ok(userResumes);
+    }
+
+    @GetMapping("/api/resume/analytics")
+    public ResponseEntity<?> getDashboardAnalytics(@AuthenticationPrincipal UserPrincipal principal) {
+
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "User must be authenticated to view dashboard analytics."));
+        }
+
+        List<Resume> resumes = resumeRepository.findByUserIdOrderByIdDesc(principal.getId());
+
+        int totalResumes = resumes.size();
+        Integer latestAtsScore = null;
+        double totalAts = 0;
+        int atsCount = 0;
+        Integer bestMatchPercentage = null;
+
+        List<Map<String, Object>> scoreTrends = new java.util.ArrayList<>();
+        List<Map<String, Object>> recentActivity = new java.util.ArrayList<>();
+        java.util.Set<String> uniqueSkills = new java.util.HashSet<>();
+
+        for (Resume r : resumes) {
+            if (r.getAtsScore() != null) {
+                if (latestAtsScore == null) {
+                    latestAtsScore = r.getAtsScore();
+                }
+                totalAts += r.getAtsScore();
+                atsCount++;
+            }
+            if (r.getMatchPercentage() != null) {
+                if (bestMatchPercentage == null || r.getMatchPercentage() > bestMatchPercentage) {
+                    bestMatchPercentage = r.getMatchPercentage();
+                }
+            }
+
+            if (r.getSkills() != null && !r.getSkills().isBlank()) {
+                String[] parts = r.getSkills().split(",");
+                for (String p : parts) {
+                    String trimmed = p.trim();
+                    if (!trimmed.isEmpty()) {
+                        uniqueSkills.add(trimmed);
+                    }
+                }
+            }
+
+            if (recentActivity.size() < 10) {
+                Map<String, Object> act = new java.util.LinkedHashMap<>();
+                act.put("id", r.getId());
+                act.put("resumeName", r.getResumeName());
+                act.put("skills", r.getSkills());
+                act.put("atsScore", r.getAtsScore());
+                act.put("matchPercentage", r.getMatchPercentage());
+                act.put("createdAt", r.getCreatedAt());
+                recentActivity.add(act);
+            }
+        }
+
+        int trendLimit = Math.min(10, resumes.size());
+        List<Resume> sub = resumes.subList(0, trendLimit);
+        for (int i = sub.size() - 1; i >= 0; i--) {
+            Resume r = sub.get(i);
+            Map<String, Object> trendItem = new java.util.LinkedHashMap<>();
+            trendItem.put("id", r.getId());
+            trendItem.put("resumeName", r.getResumeName());
+            trendItem.put("atsScore", r.getAtsScore());
+            trendItem.put("matchPercentage", r.getMatchPercentage());
+            trendItem.put("createdAt", r.getCreatedAt());
+            scoreTrends.add(trendItem);
+        }
+
+        Integer averageAtsScore = atsCount > 0 ? (int) Math.round(totalAts / atsCount) : null;
+
+        Map<String, Object> analytics = new java.util.LinkedHashMap<>();
+        analytics.put("totalResumesAnalyzed", totalResumes);
+        analytics.put("latestAtsScore", latestAtsScore);
+        analytics.put("averageAtsScore", averageAtsScore);
+        analytics.put("bestMatchPercentage", bestMatchPercentage != null ? bestMatchPercentage : 0);
+        analytics.put("totalUniqueSkills", uniqueSkills.size());
+        analytics.put("scoreTrends", scoreTrends);
+        analytics.put("recentActivity", recentActivity);
+
+        return ResponseEntity.ok(analytics);
     }
 
     @DeleteMapping("/api/resume/{id}")

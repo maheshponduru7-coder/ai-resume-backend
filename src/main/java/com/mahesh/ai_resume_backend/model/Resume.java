@@ -25,6 +25,12 @@ public class Resume {
     private String resumeName;
     private String skills;
 
+    @Column(nullable = true)
+    private Integer atsScore;
+
+    @Column(nullable = true)
+    private Integer matchPercentage;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = true)
     @JsonIgnore
@@ -76,6 +82,22 @@ public class Resume {
 
     public void setSkills(String skills) {
         this.skills = skills;
+    }
+
+    public Integer getAtsScore() {
+        return atsScore;
+    }
+
+    public void setAtsScore(Integer atsScore) {
+        this.atsScore = atsScore;
+    }
+
+    public Integer getMatchPercentage() {
+        return matchPercentage;
+    }
+
+    public void setMatchPercentage(Integer matchPercentage) {
+        this.matchPercentage = matchPercentage;
     }
 
     @JsonIgnore

@@ -76,9 +76,10 @@ public class SecurityConfig {
                                 "/api/resume/match",
                                 "/api/resume/ats-check",
                                 "/api/resume/suggestions",
+                                "/api/resume/compare",
                                 "/error"
                         ).permitAll()
-                        .requestMatchers(HttpMethod.GET, "/api/resume/history").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/resume/history", "/api/resume/analytics").permitAll()
                         .anyRequest().authenticated()
                 );
 
