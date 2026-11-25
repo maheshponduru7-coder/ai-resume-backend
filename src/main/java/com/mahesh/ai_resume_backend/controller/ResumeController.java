@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.mahesh.ai_resume_backend.model.AtsResult;
 import com.mahesh.ai_resume_backend.model.JobDescriptionRequest;
+import com.mahesh.ai_resume_backend.model.JobRecommendationRequest;
+import com.mahesh.ai_resume_backend.model.JobRecommendationResponse;
 import com.mahesh.ai_resume_backend.model.Resume;
 import com.mahesh.ai_resume_backend.model.ResumeAnalysisResponse;
 import com.mahesh.ai_resume_backend.model.ResumeCompareRequest;
@@ -27,6 +29,7 @@ import com.mahesh.ai_resume_backend.repository.UserRepository;
 import com.mahesh.ai_resume_backend.security.UserPrincipal;
 import com.mahesh.ai_resume_backend.service.AtsService;
 import com.mahesh.ai_resume_backend.service.JobMatchingService;
+import com.mahesh.ai_resume_backend.service.JobRecommendationService;
 import com.mahesh.ai_resume_backend.service.ResumeCompareService;
 import com.mahesh.ai_resume_backend.service.ResumeImprovementService;
 import com.mahesh.ai_resume_backend.service.SkillService;
@@ -40,6 +43,7 @@ public class ResumeController {
     private final AtsService atsService;
     private final ResumeImprovementService resumeImprovementService;
     private final ResumeCompareService resumeCompareService;
+    private final JobRecommendationService jobRecommendationService;
     private final ResumeRepository resumeRepository;
     private final UserRepository userRepository;
 
@@ -49,6 +53,7 @@ public class ResumeController {
             AtsService atsService,
             ResumeImprovementService resumeImprovementService,
             ResumeCompareService resumeCompareService,
+            JobRecommendationService jobRecommendationService,
             ResumeRepository resumeRepository,
             UserRepository userRepository) {
         this.skillService = skillService;
@@ -56,6 +61,7 @@ public class ResumeController {
         this.atsService = atsService;
         this.resumeImprovementService = resumeImprovementService;
         this.resumeCompareService = resumeCompareService;
+        this.jobRecommendationService = jobRecommendationService;
         this.resumeRepository = resumeRepository;
         this.userRepository = userRepository;
     }
@@ -126,6 +132,43 @@ public class ResumeController {
         }
 
         ResumeCompareResponse response = resumeCompareService.compareResumes(request);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/api/resume/recommend-jobs")
+    public ResponseEntity<?> recommendJobs(
+            @RequestBody JobRecommendationRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+
+        if (request == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Request body cannot be null."));
+        }
+
+        String textToAnalyze = request.getResumeText();
+
+        // If resumeId is provided and user is authenticated, retrieve user's resume
+        if (request.getResumeId() != null) {
+            if (principal == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "message", "Authentication required to access saved resumes by ID."));
+            }
+            Resume userResume = resumeRepository.findByIdAndUserId(request.getResumeId(), principal.getId()).orElse(null);
+            if (userResume == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                        "message", "Resume not found or access denied."));
+            }
+            if (textToAnalyze == null || textToAnalyze.trim().isEmpty()) {
+                textToAnalyze = userResume.getResumeName() + "\nSkills: " + userResume.getSkills();
+            }
+        }
+
+        if (textToAnalyze == null || textToAnalyze.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Resume text cannot be empty. Please upload or provide a resume."));
+        }
+
+        JobRecommendationResponse response = jobRecommendationService.recommendJobs(textToAnalyze);
         return ResponseEntity.ok(response);
     }
 
