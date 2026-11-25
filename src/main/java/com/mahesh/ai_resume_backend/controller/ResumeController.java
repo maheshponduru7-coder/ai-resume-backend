@@ -23,6 +23,8 @@ import com.mahesh.ai_resume_backend.model.ResumeAnalysisResponse;
 import com.mahesh.ai_resume_backend.model.ResumeCompareRequest;
 import com.mahesh.ai_resume_backend.model.ResumeCompareResponse;
 import com.mahesh.ai_resume_backend.model.ResumeImprovementResponse;
+import com.mahesh.ai_resume_backend.model.SkillGapRequest;
+import com.mahesh.ai_resume_backend.model.SkillGapResponse;
 import com.mahesh.ai_resume_backend.model.User;
 import com.mahesh.ai_resume_backend.repository.ResumeRepository;
 import com.mahesh.ai_resume_backend.repository.UserRepository;
@@ -32,6 +34,7 @@ import com.mahesh.ai_resume_backend.service.JobMatchingService;
 import com.mahesh.ai_resume_backend.service.JobRecommendationService;
 import com.mahesh.ai_resume_backend.service.ResumeCompareService;
 import com.mahesh.ai_resume_backend.service.ResumeImprovementService;
+import com.mahesh.ai_resume_backend.service.SkillGapService;
 import com.mahesh.ai_resume_backend.service.SkillService;
 
 @RestController
@@ -44,6 +47,7 @@ public class ResumeController {
     private final ResumeImprovementService resumeImprovementService;
     private final ResumeCompareService resumeCompareService;
     private final JobRecommendationService jobRecommendationService;
+    private final SkillGapService skillGapService;
     private final ResumeRepository resumeRepository;
     private final UserRepository userRepository;
 
@@ -54,6 +58,7 @@ public class ResumeController {
             ResumeImprovementService resumeImprovementService,
             ResumeCompareService resumeCompareService,
             JobRecommendationService jobRecommendationService,
+            SkillGapService skillGapService,
             ResumeRepository resumeRepository,
             UserRepository userRepository) {
         this.skillService = skillService;
@@ -62,6 +67,7 @@ public class ResumeController {
         this.resumeImprovementService = resumeImprovementService;
         this.resumeCompareService = resumeCompareService;
         this.jobRecommendationService = jobRecommendationService;
+        this.skillGapService = skillGapService;
         this.resumeRepository = resumeRepository;
         this.userRepository = userRepository;
     }
@@ -169,6 +175,43 @@ public class ResumeController {
         }
 
         JobRecommendationResponse response = jobRecommendationService.recommendJobs(textToAnalyze);
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/api/resume/skill-gap")
+    public ResponseEntity<?> analyzeSkillGap(
+            @RequestBody SkillGapRequest request,
+            @AuthenticationPrincipal UserPrincipal principal) {
+
+        if (request == null) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Request body cannot be null."));
+        }
+
+        String textToAnalyze = request.getResumeText();
+
+        // If resumeId is provided and user is authenticated, retrieve user's resume with data isolation
+        if (request.getResumeId() != null) {
+            if (principal == null) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of(
+                        "message", "Authentication required to access saved resumes by ID."));
+            }
+            Resume userResume = resumeRepository.findByIdAndUserId(request.getResumeId(), principal.getId()).orElse(null);
+            if (userResume == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                        "message", "Resume not found or access denied."));
+            }
+            if (textToAnalyze == null || textToAnalyze.trim().isEmpty()) {
+                textToAnalyze = userResume.getResumeName() + "\nSkills: " + userResume.getSkills();
+            }
+        }
+
+        if (textToAnalyze == null || textToAnalyze.trim().isEmpty()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "message", "Resume text cannot be empty. Please upload or provide a resume."));
+        }
+
+        SkillGapResponse response = skillGapService.analyzeSkillGap(textToAnalyze, request.getTargetRole());
         return ResponseEntity.ok(response);
     }
 

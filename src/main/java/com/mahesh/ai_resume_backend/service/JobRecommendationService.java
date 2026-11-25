@@ -34,14 +34,14 @@ public class JobRecommendationService {
         this.skillService = skillService;
     }
 
-    private static class RoleProfile {
-        String roleName;
-        String description;
-        List<String> primarySkills;
-        List<String> secondarySkills;
-        List<String> tips;
+    public static class RoleProfile {
+        private String roleName;
+        private String description;
+        private List<String> primarySkills;
+        private List<String> secondarySkills;
+        private List<String> tips;
 
-        RoleProfile(String roleName, String description, List<String> primarySkills,
+        public RoleProfile(String roleName, String description, List<String> primarySkills,
                     List<String> secondarySkills, List<String> tips) {
             this.roleName = roleName;
             this.description = description;
@@ -49,9 +49,29 @@ public class JobRecommendationService {
             this.secondarySkills = secondarySkills;
             this.tips = tips;
         }
+
+        public String getRoleName() {
+            return roleName;
+        }
+
+        public String getDescription() {
+            return description;
+        }
+
+        public List<String> getPrimarySkills() {
+            return primarySkills;
+        }
+
+        public List<String> getSecondarySkills() {
+            return secondarySkills;
+        }
+
+        public List<String> getTips() {
+            return tips;
+        }
     }
 
-    private List<RoleProfile> getStandardRoleProfiles() {
+    public List<RoleProfile> getStandardRoleProfiles() {
         List<RoleProfile> profiles = new ArrayList<>();
 
         // 1. Java Developer
@@ -278,7 +298,7 @@ public class JobRecommendationService {
         return rec;
     }
 
-    private List<String> extractAllCandidateSkills(String lowerText) {
+    public List<String> extractAllCandidateSkills(String lowerText) {
         List<String> list = new ArrayList<>();
 
         // 1. SkillService base skills

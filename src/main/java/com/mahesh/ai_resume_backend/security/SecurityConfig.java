@@ -78,6 +78,7 @@ public class SecurityConfig {
                                 "/api/resume/suggestions",
                                 "/api/resume/compare",
                                 "/api/resume/recommend-jobs",
+                                "/api/resume/skill-gap",
                                 "/error"
                         ).permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/resume/history", "/api/resume/analytics").permitAll()
