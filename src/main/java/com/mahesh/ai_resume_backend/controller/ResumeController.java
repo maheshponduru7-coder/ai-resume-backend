@@ -255,6 +255,9 @@ public class ResumeController {
         if (resume.getSkills() != null) {
             existing.setSkills(resume.getSkills());
         }
+        if (resume.getResumeData() != null) {
+            existing.setResumeData(resume.getResumeData());
+        }
         if (resume.getAtsScore() != null) {
             existing.setAtsScore(resume.getAtsScore());
         }
@@ -269,6 +272,73 @@ public class ResumeController {
 
         Resume updated = resumeRepository.save(existing);
         return ResponseEntity.ok(updated);
+    }
+
+    @PostMapping("/api/resume/builder/save")
+    public ResponseEntity<?> saveBuilderResume(
+            @RequestBody Resume resume,
+            @AuthenticationPrincipal UserPrincipal principal) {
+
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Authentication required to save resume drafts."));
+        }
+
+        User user = userRepository.findById(principal.getId()).orElse(null);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Authenticated user not found."));
+        }
+
+        String name = resume.getResumeName();
+        if (name == null || name.trim().isEmpty()) {
+            name = "Untitled Resume";
+        }
+        name = name.trim();
+
+        Resume target;
+        if (resume.getId() != null) {
+            target = resumeRepository.findByIdAndUserId(resume.getId(), user.getId()).orElse(null);
+            if (target == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("message", "Resume not found or access denied."));
+            }
+        } else {
+            target = new Resume();
+            target.setUser(user);
+        }
+
+        target.setResumeName(name);
+        target.setSkills(resume.getSkills());
+        target.setResumeData(resume.getResumeData());
+        if (resume.getAtsScore() != null) {
+            target.setAtsScore(resume.getAtsScore());
+        }
+        if (resume.getMatchPercentage() != null) {
+            target.setMatchPercentage(resume.getMatchPercentage());
+        }
+
+        Resume saved = resumeRepository.save(target);
+        return ResponseEntity.ok(saved);
+    }
+
+    @GetMapping("/api/resume/builder/{id}")
+    public ResponseEntity<?> getBuilderResume(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserPrincipal principal) {
+
+        if (principal == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Authentication required to load resume draft."));
+        }
+
+        Resume resume = resumeRepository.findByIdAndUserId(id, principal.getId()).orElse(null);
+        if (resume == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("message", "Resume draft not found or access denied."));
+        }
+
+        return ResponseEntity.ok(resume);
     }
 
     @GetMapping("/api/resume/history")

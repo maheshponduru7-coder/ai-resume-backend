@@ -25,6 +25,9 @@ public class Resume {
     private String resumeName;
     private String skills;
 
+    @Column(columnDefinition = "TEXT", nullable = true)
+    private String resumeData;
+
     @Column(nullable = true)
     private Integer atsScore;
 
@@ -82,6 +85,14 @@ public class Resume {
 
     public void setSkills(String skills) {
         this.skills = skills;
+    }
+
+    public String getResumeData() {
+        return resumeData;
+    }
+
+    public void setResumeData(String resumeData) {
+        this.resumeData = resumeData;
     }
 
     public Integer getAtsScore() {
